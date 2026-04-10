@@ -8,12 +8,20 @@ namespace LegacyRenewalApp
         private readonly ISubscriptionPlanRepository _planRepository;
         private readonly IBillingGateway _billingGateway;
         private readonly ITaxCalculator _taxCalculator;
+        private readonly IDiscountCalculator _discountCalculator;
         
         public SubscriptionRenewalService() : this(
             new CustomerRepository(), 
             new SubscriptionPlanRepository(), 
             new BillingGatewayAdapter(),
-            new TaxCalculator())
+            new TaxCalculator(),
+            new DiscountCalculator(new IDiscountRule[] 
+            {
+                new SegmentDiscountRule(),
+                new LoyaltyYearsDiscountRule(),
+                new VolumeDiscountRule(),
+                new LoyaltyPointsDiscountRule()
+            }))
         {
         }
         
@@ -21,12 +29,14 @@ namespace LegacyRenewalApp
             ICustomerRepository customerRepository,
             ISubscriptionPlanRepository planRepository,
             IBillingGateway billingGateway,
-            ITaxCalculator taxCalculator)
+            ITaxCalculator taxCalculator,
+            IDiscountCalculator discountCalculator)
         {
             _customerRepository = customerRepository ?? throw new ArgumentNullException(nameof(customerRepository));
             _planRepository = planRepository ?? throw new ArgumentNullException(nameof(planRepository));
             _billingGateway = billingGateway ?? throw new ArgumentNullException(nameof(billingGateway));
             _taxCalculator = taxCalculator ?? throw new ArgumentNullException(nameof(taxCalculator));
+            _discountCalculator = discountCalculator ?? throw new ArgumentNullException(nameof(discountCalculator));
         }
         
         public RenewalInvoice CreateRenewalInvoice(
@@ -70,122 +80,38 @@ namespace LegacyRenewalApp
             }
 
             decimal baseAmount = (plan.MonthlyPricePerSeat * seatCount * 12m) + plan.SetupFee;
-            decimal discountAmount = 0m;
-            string notes = string.Empty;
-
-            if (customer.Segment == "Silver")
-            {
-                discountAmount += baseAmount * 0.05m;
-                notes += "silver discount; ";
-            }
-            else if (customer.Segment == "Gold")
-            {
-                discountAmount += baseAmount * 0.10m;
-                notes += "gold discount; ";
-            }
-            else if (customer.Segment == "Platinum")
-            {
-                discountAmount += baseAmount * 0.15m;
-                notes += "platinum discount; ";
-            }
-            else if (customer.Segment == "Education" && plan.IsEducationEligible)
-            {
-                discountAmount += baseAmount * 0.20m;
-                notes += "education discount; ";
-            }
-
-            if (customer.YearsWithCompany >= 5)
-            {
-                discountAmount += baseAmount * 0.07m;
-                notes += "long-term loyalty discount; ";
-            }
-            else if (customer.YearsWithCompany >= 2)
-            {
-                discountAmount += baseAmount * 0.03m;
-                notes += "basic loyalty discount; ";
-            }
-
-            if (seatCount >= 50)
-            {
-                discountAmount += baseAmount * 0.12m;
-                notes += "large team discount; ";
-            }
-            else if (seatCount >= 20)
-            {
-                discountAmount += baseAmount * 0.08m;
-                notes += "medium team discount; ";
-            }
-            else if (seatCount >= 10)
-            {
-                discountAmount += baseAmount * 0.04m;
-                notes += "small team discount; ";
-            }
-
-            if (useLoyaltyPoints && customer.LoyaltyPoints > 0)
-            {
-                int pointsToUse = customer.LoyaltyPoints > 200 ? 200 : customer.LoyaltyPoints;
-                discountAmount += pointsToUse;
-                notes += $"loyalty points used: {pointsToUse}; ";
-            }
-
+            var discountResult = _discountCalculator.CalculateTotalDiscount(customer, plan, seatCount, baseAmount, useLoyaltyPoints);
+            decimal discountAmount = discountResult.Amount;
+            string notes = discountResult.Note;
+            
             decimal subtotalAfterDiscount = baseAmount - discountAmount;
             if (subtotalAfterDiscount < 300m)
             {
                 subtotalAfterDiscount = 300m;
                 notes += "minimum discounted subtotal applied; ";
             }
-
+            
             decimal supportFee = 0m;
             if (includePremiumSupport)
             {
-                if (normalizedPlanCode == "START")
-                {
-                    supportFee = 250m;
-                }
-                else if (normalizedPlanCode == "PRO")
-                {
-                    supportFee = 400m;
-                }
-                else if (normalizedPlanCode == "ENTERPRISE")
-                {
-                    supportFee = 700m;
-                }
-
+                if (normalizedPlanCode == "START") supportFee = 250m;
+                else if (normalizedPlanCode == "PRO") supportFee = 400m;
+                else if (normalizedPlanCode == "ENTERPRISE") supportFee = 700m;
                 notes += "premium support included; ";
             }
-
+            
             decimal paymentFee = 0m;
-            if (normalizedPaymentMethod == "CARD")
-            {
-                paymentFee = (subtotalAfterDiscount + supportFee) * 0.02m;
-                notes += "card payment fee; ";
-            }
-            else if (normalizedPaymentMethod == "BANK_TRANSFER")
-            {
-                paymentFee = (subtotalAfterDiscount + supportFee) * 0.01m;
-                notes += "bank transfer fee; ";
-            }
-            else if (normalizedPaymentMethod == "PAYPAL")
-            {
-                paymentFee = (subtotalAfterDiscount + supportFee) * 0.035m;
-                notes += "paypal fee; ";
-            }
-            else if (normalizedPaymentMethod == "INVOICE")
-            {
-                paymentFee = 0m;
-                notes += "invoice payment; ";
-            }
-            else
-            {
-                throw new ArgumentException("Unsupported payment method");
-            }
-
+            if (normalizedPaymentMethod == "CARD") { paymentFee = (subtotalAfterDiscount + supportFee) * 0.02m; notes += "card payment fee; "; }
+            else if (normalizedPaymentMethod == "BANK_TRANSFER") { paymentFee = (subtotalAfterDiscount + supportFee) * 0.01m; notes += "bank transfer fee; "; }
+            else if (normalizedPaymentMethod == "PAYPAL") { paymentFee = (subtotalAfterDiscount + supportFee) * 0.035m; notes += "paypal fee; "; }
+            else if (normalizedPaymentMethod == "INVOICE") { paymentFee = 0m; notes += "invoice payment; "; }
+            else throw new ArgumentException("Unsupported payment method");
+            
             decimal taxRate = _taxCalculator.GetTaxRate(customer.Country);
-
             decimal taxBase = subtotalAfterDiscount + supportFee + paymentFee;
             decimal taxAmount = taxBase * taxRate;
+            
             decimal finalAmount = taxBase + taxAmount;
-
             if (finalAmount < 500m)
             {
                 finalAmount = 500m;
