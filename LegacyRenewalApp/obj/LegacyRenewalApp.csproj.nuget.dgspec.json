@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\mateu\\Desktop\\zadanie_refactoring_renewal\\LegacyRenewalApp\\LegacyRenewalApp.csproj": {}
+    "C:\\Users\\mateu\\RiderProjects\\PJATK-APBD-Cw4-s33480\\LegacyRenewalApp\\LegacyRenewalApp.csproj": {}
   },
   "projects": {
-    "C:\\Users\\mateu\\Desktop\\zadanie_refactoring_renewal\\LegacyRenewalApp\\LegacyRenewalApp.csproj": {
+    "C:\\Users\\mateu\\RiderProjects\\PJATK-APBD-Cw4-s33480\\LegacyRenewalApp\\LegacyRenewalApp.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\mateu\\Desktop\\zadanie_refactoring_renewal\\LegacyRenewalApp\\LegacyRenewalApp.csproj",
+        "projectUniqueName": "C:\\Users\\mateu\\RiderProjects\\PJATK-APBD-Cw4-s33480\\LegacyRenewalApp\\LegacyRenewalApp.csproj",
         "projectName": "LegacyRenewalApp",
-        "projectPath": "C:\\Users\\mateu\\Desktop\\zadanie_refactoring_renewal\\LegacyRenewalApp\\LegacyRenewalApp.csproj",
+        "projectPath": "C:\\Users\\mateu\\RiderProjects\\PJATK-APBD-Cw4-s33480\\LegacyRenewalApp\\LegacyRenewalApp.csproj",
         "packagesPath": "C:\\Users\\mateu\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\mateu\\Desktop\\zadanie_refactoring_renewal\\LegacyRenewalApp\\obj\\",
+        "outputPath": "C:\\Users\\mateu\\RiderProjects\\PJATK-APBD-Cw4-s33480\\LegacyRenewalApp\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
