@@ -9,6 +9,8 @@ namespace LegacyRenewalApp
         private readonly IBillingGateway _billingGateway;
         private readonly ITaxCalculator _taxCalculator;
         private readonly IDiscountCalculator _discountCalculator;
+        private readonly ISupportFeeCalculator _supportFeeCalculator;
+        private readonly IPaymentFeeCalculator _paymentFeeCalculator;
         
         public SubscriptionRenewalService() : this(
             new CustomerRepository(), 
@@ -21,7 +23,9 @@ namespace LegacyRenewalApp
                 new LoyaltyYearsDiscountRule(),
                 new VolumeDiscountRule(),
                 new LoyaltyPointsDiscountRule()
-            }))
+            }),
+            new SupportFeeCalculator(),
+            new PaymentFeeCalculator())
         {
         }
         
@@ -30,13 +34,17 @@ namespace LegacyRenewalApp
             ISubscriptionPlanRepository planRepository,
             IBillingGateway billingGateway,
             ITaxCalculator taxCalculator,
-            IDiscountCalculator discountCalculator)
+            IDiscountCalculator discountCalculator,
+            ISupportFeeCalculator supportFeeCalculator,
+            IPaymentFeeCalculator paymentFeeCalculator)
         {
             _customerRepository = customerRepository ?? throw new ArgumentNullException(nameof(customerRepository));
             _planRepository = planRepository ?? throw new ArgumentNullException(nameof(planRepository));
             _billingGateway = billingGateway ?? throw new ArgumentNullException(nameof(billingGateway));
             _taxCalculator = taxCalculator ?? throw new ArgumentNullException(nameof(taxCalculator));
             _discountCalculator = discountCalculator ?? throw new ArgumentNullException(nameof(discountCalculator));
+            _supportFeeCalculator = supportFeeCalculator ?? throw new ArgumentNullException(nameof(supportFeeCalculator));
+            _paymentFeeCalculator = paymentFeeCalculator ?? throw new ArgumentNullException(nameof(paymentFeeCalculator));
         }
         
         public RenewalInvoice CreateRenewalInvoice(
@@ -91,21 +99,13 @@ namespace LegacyRenewalApp
                 notes += "minimum discounted subtotal applied; ";
             }
             
-            decimal supportFee = 0m;
-            if (includePremiumSupport)
-            {
-                if (normalizedPlanCode == "START") supportFee = 250m;
-                else if (normalizedPlanCode == "PRO") supportFee = 400m;
-                else if (normalizedPlanCode == "ENTERPRISE") supportFee = 700m;
-                notes += "premium support included; ";
-            }
-            
-            decimal paymentFee = 0m;
-            if (normalizedPaymentMethod == "CARD") { paymentFee = (subtotalAfterDiscount + supportFee) * 0.02m; notes += "card payment fee; "; }
-            else if (normalizedPaymentMethod == "BANK_TRANSFER") { paymentFee = (subtotalAfterDiscount + supportFee) * 0.01m; notes += "bank transfer fee; "; }
-            else if (normalizedPaymentMethod == "PAYPAL") { paymentFee = (subtotalAfterDiscount + supportFee) * 0.035m; notes += "paypal fee; "; }
-            else if (normalizedPaymentMethod == "INVOICE") { paymentFee = 0m; notes += "invoice payment; "; }
-            else throw new ArgumentException("Unsupported payment method");
+            var supportResult = _supportFeeCalculator.Calculate(includePremiumSupport, normalizedPlanCode);
+            decimal supportFee = supportResult.Amount;
+            notes += supportResult.Note;
+
+            var paymentResult = _paymentFeeCalculator.Calculate(normalizedPaymentMethod, subtotalAfterDiscount + supportFee);
+            decimal paymentFee = paymentResult.Amount;
+            notes += paymentResult.Note;
             
             decimal taxRate = _taxCalculator.GetTaxRate(customer.Country);
             decimal taxBase = subtotalAfterDiscount + supportFee + paymentFee;
